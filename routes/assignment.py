@@ -11,6 +11,7 @@ from database import get_db
 from utils.assignment_utils import calculate_compensation, compute_cost_center_key
 from schemas.assignment_schema import StudentClassAssignmentCreate
 from schemas.assignment import StudentClassAssignmentRead
+from models.student import StudentLookup
 from fastapi.encoders import jsonable_encoder
 
 
@@ -88,9 +89,9 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
 
         row["CreatedAt"] = now
         row["Term"] = "2254"
-        row["Location"] = "TEMPE"
-        row["Campus"] = "TEMPE"
-        row["AcadCareer"] = "UGRD"
+        # row["Location"] = "TEMPE"
+        # row["Campus"] = "TEMPE"
+        # row["AcadCareer"] = "UGRD"
 
         try:
             row["WeeklyHours"] = int(row.get("WeeklyHours", 0))
@@ -99,6 +100,13 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
 
         row["Compensation"] = calculate_compensation(row)
         row["CostCenterKey"] = compute_cost_center_key(row)
+
+        if row.get("FultonFellow") == "Yes":
+            student_id = row.get("Student_ID")
+            student = db.query(StudentLookup).filter(StudentLookup.Student_ID == student_id).first()
+            if student:
+                row["cur_gpa"] = student.Current_GPA
+                row["cum_gpa"] = student.Cumulative_GPA
 
         # Create SQLAlchemy object
         try:

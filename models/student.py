@@ -5,7 +5,7 @@ Base = declarative_base()
 
 
 class StudentLookup(Base):
-    __tablename__ = 'StudentData'
+    __tablename__ = "StudentData"
     __table_args__ = {'schema': 'dbo'}
 
     Student_ID = Column(Integer, primary_key=True, index=True)
