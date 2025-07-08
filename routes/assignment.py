@@ -4,6 +4,8 @@ from typing import List
 from datetime import datetime, timezone
 import csv
 import io
+from fastapi.responses import StreamingResponse
+
 
 from models.assignment import StudentClassAssignment
 from schemas.assignment_dto import StudentAssignmentUpdateDto
@@ -24,13 +26,35 @@ def get_assignments(db: Session = Depends(get_db)):
     return db.query(StudentClassAssignment).all()
 
 
+@router.get("/template")
+def download_template():
+    headers = [
+        "Position", "FultonFellow", "WeeklyHours", "Student_ID", "First_Name",
+        "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
+        "InstructorFirstName", "InstructorLastName", "ClassSession", "ClassNum",
+        "Term", "Location", "Campus", "AcadCareer"
+    ]
+    csv_content = ",".join(headers) + "\n"
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=BulkUploadTemplate.csv"}
+    )
+
+
 # GET by ID
 @router.get("/{assignment_id}", response_model=dict)
 def get_assignment(assignment_id: int, db: Session = Depends(get_db)):
     assignment = db.query(StudentClassAssignment).filter_by(Id=assignment_id).first()
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    return assignment
+    return {
+        "Id": assignment.Id,
+        "Position_Number": assignment.Position_Number,
+        "SSN_Sent": assignment.SSN_Sent,
+        "Offer_Sent": assignment.Offer_Sent,
+        "Offer_Signed": assignment.Offer_Signed,
+    }
 
 
 # GET total hours by student
@@ -119,3 +143,5 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
     db.commit()
 
     return {"message": f"{len(records)} records uploaded successfully."}
+
+

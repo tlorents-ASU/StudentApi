@@ -26,7 +26,7 @@ class StudentClassAssignmentRead(BaseModel):
     First_Name: Optional[str] = None
     Last_Name: Optional[str] = None
     Position_Number: Optional[str] = None
-    I9_Sent: Optional[bool] = None
+    # I9_Sent: Optional[bool] = None
     SSN_Sent: Optional[bool] = None
     Offer_Sent: Optional[bool] = None
     Offer_Signed: Optional[bool] = None

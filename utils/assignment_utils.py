@@ -21,6 +21,18 @@ def calculate_compensation(a):
         if h == 20 and level == "PHD" and fellow == "Yes":
             return 13461.24
 
+    if position == "Grader":
+        if h == 10 and level == "MS" and fellow == "Yes":
+            return 7000
+        if h == 10 and level == "PHD" and fellow == "No":
+            return 7250
+        if h == 20 and level == "MS" and fellow == "No":
+            return 13272
+        if h == 20 and level == "PHD" and fellow == "No":
+            return 14500
+        if h == 20 and level == "PHD" and fellow == "Yes":
+            return 13461.24
+
     if position == "TA (GSA) 1 credit":
         if h == 10 and level == "PHD" and fellow == "No":
             return 7552.5

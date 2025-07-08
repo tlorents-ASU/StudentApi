@@ -39,7 +39,7 @@ class StudentClassAssignment(Base):
     Last_Name = Column(String, nullable=True)
     Position_Number = Column(String, nullable=True)
 
-    I9_Sent = Column(Boolean, nullable=True)
+    # I9_Sent = Column(Boolean, nullable=True)
     SSN_Sent = Column(Boolean, nullable=True)
     Offer_Sent = Column(Boolean, nullable=True)
     Offer_Signed = Column(Boolean, nullable=True)
