@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from models.assignment import StudentClassAssignment
 from schemas.assignment_dto import StudentAssignmentUpdateDto
 from database import get_db
-from utils.assignment_utils import calculate_compensation, compute_cost_center_key
+from utils.assignment_utils import calculate_compensation, compute_cost_center_key, infer_acad_career
 from schemas.assignment_schema import StudentClassAssignmentCreate
 from schemas.assignment import StudentClassAssignmentRead
 from models.student import StudentLookup
@@ -32,7 +32,7 @@ def download_template():
         "Position", "FultonFellow", "WeeklyHours", "Student_ID", "First_Name",
         "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
         "InstructorFirstName", "InstructorLastName", "ClassSession", "ClassNum",
-        "Term", "Location", "Campus", "AcadCareer"
+        "Term", "Location", "Campus"
     ]
     csv_content = ",".join(headers) + "\n"
     return StreamingResponse(
@@ -113,17 +113,16 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
 
         row["CreatedAt"] = now
         row["Term"] = "2254"
-        # row["Location"] = "TEMPE"
-        # row["Campus"] = "TEMPE"
-        # row["AcadCareer"] = "UGRD"
 
         try:
             row["WeeklyHours"] = int(row.get("WeeklyHours", 0))
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid WeeklyHours value: {row.get('WeeklyHours')}")
 
-        row["Compensation"] = calculate_compensation(row)
+        # Infer AcadCareer from CatalogNum
+        row["AcadCareer"] = infer_acad_career(row)
         row["CostCenterKey"] = compute_cost_center_key(row)
+        row["Compensation"] = calculate_compensation(row)
 
         if row.get("FultonFellow") == "Yes":
             student_id = row.get("Student_ID")
