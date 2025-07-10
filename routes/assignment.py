@@ -31,7 +31,7 @@ def download_template():
     headers = [
         "Position", "FultonFellow", "WeeklyHours", "Student_ID", "First_Name",
         "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
-        "InstructorFirstName", "InstructorLastName", "ClassSession", "ClassNum",
+        "InstructorFirstName", "InstructorLastName", "InstructorID", "ClassSession", "ClassNum",
         "Term", "Location", "Campus"
     ]
     csv_content = ",".join(headers) + "\n"

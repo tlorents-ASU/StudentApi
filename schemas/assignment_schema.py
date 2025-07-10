@@ -15,6 +15,7 @@ class StudentClassAssignmentCreate(BaseModel):
     Term: str
     InstructorFirstName: str
     InstructorLastName: str
+    InstructorID: int
     WeeklyHours: int
     FultonFellow: str
     Compensation: float
