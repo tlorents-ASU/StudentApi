@@ -29,7 +29,7 @@ def get_assignments(db: Session = Depends(get_db)):
 @router.get("/template")
 def download_template():
     headers = [
-        "Position", "FultonFellow", "WeeklyHours", "Student_ID", "First_Name",
+        "Position", "FultonFellow", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "First_Name",
         "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
         "InstructorFirstName", "InstructorLastName", "InstructorID", "ClassSession", "ClassNum",
         "Location", "Campus"
@@ -98,7 +98,6 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
 
     try:
-        # Read file content as text
         content = file.file.read().decode("utf-8")
         csv_reader = csv.DictReader(io.StringIO(content))
     except Exception:
@@ -108,9 +107,23 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
     now = datetime.now(timezone.utc)
 
     for row in csv_reader:
-        if not isinstance(row, dict):
-            raise HTTPException(status_code=400, detail="CSV row is not a dictionary.")
+        input_id = (row.get("Student_ID (ID number OR ASUrite accepted)") or "").strip()
 
+        # Determine if input is numeric (Student_ID) or ASUrite
+        student = None
+        if input_id.isdigit():
+            student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(input_id)).first()
+        elif input_id:
+            student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(input_id)).first()
+
+        if not student:
+            raise HTTPException(status_code=422, detail=f"No student found for: {input_id}")
+
+        # Always set both fields explicitly, so row matches your DB model
+        row["Student_ID"] = student.Student_ID
+        row["ASUrite"] = student.ASUrite
+
+        # Rest of your field mapping/logic (keep these as you have them!)
         row["CreatedAt"] = now
         row["Term"] = "2257"
 
@@ -119,29 +132,33 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid WeeklyHours value: {row.get('WeeklyHours')}")
 
-        # Infer AcadCareer from CatalogNum
         row["AcadCareer"] = infer_acad_career(row)
         row["CostCenterKey"] = compute_cost_center_key(row)
         row["Compensation"] = calculate_compensation(row)
 
-        if row.get("FultonFellow") == "Yes":
-            student_id = row.get("Student_ID")
-            student = db.query(StudentLookup).filter(StudentLookup.Student_ID == student_id).first()
-            if student:
-                row["cur_gpa"] = student.Current_GPA
-                row["cum_gpa"] = student.Cumulative_GPA
+        if str(row.get("FultonFellow", "")).strip().lower() == "yes":
+            row["cur_gpa"] = student.Current_GPA
+            row["cum_gpa"] = student.Cumulative_GPA
+        else:
+            row["cur_gpa"] = None
+            row["cum_gpa"] = None
 
-        # Create SQLAlchemy object
+        # Only include columns that exist in your model
+        allowed_fields = {c.name for c in StudentClassAssignment.__table__.columns}
+        clean_row = {k: v for k, v in row.items() if k in allowed_fields}
+
         try:
-            record = StudentClassAssignment(**row)
+            record = StudentClassAssignment(**clean_row)
             records.append(record)
         except TypeError as e:
             raise HTTPException(status_code=422, detail=f"Error creating assignment object: {e}")
 
     db.bulk_save_objects(records)
     db.commit()
-
     return {"message": f"{len(records)} records uploaded successfully."}
+
+
+
 
 
 # NEW: Get assignment summary for a student (by Student_ID or ASUrite)

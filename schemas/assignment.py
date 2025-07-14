@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 class StudentClassAssignmentRead(BaseModel):
     Id: int
     Student_ID: int
-    ASUrite: str
+    ASUrite: Optional[str] = None
     Position: str
     WeeklyHours: int
     FultonFellow: str
