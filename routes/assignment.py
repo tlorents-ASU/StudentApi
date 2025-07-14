@@ -32,7 +32,7 @@ def download_template():
         "Position", "FultonFellow", "WeeklyHours", "Student_ID", "First_Name",
         "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
         "InstructorFirstName", "InstructorLastName", "InstructorID", "ClassSession", "ClassNum",
-        "Term", "Location", "Campus"
+        "Location", "Campus"
     ]
     csv_content = ",".join(headers) + "\n"
     return StreamingResponse(
@@ -112,7 +112,7 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
             raise HTTPException(status_code=400, detail="CSV row is not a dictionary.")
 
         row["CreatedAt"] = now
-        row["Term"] = "2254"
+        row["Term"] = "2257"
 
         try:
             row["WeeklyHours"] = int(row.get("WeeklyHours", 0))
@@ -144,3 +144,49 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
     return {"message": f"{len(records)} records uploaded successfully."}
 
 
+# NEW: Get assignment summary for a student (by Student_ID or ASUrite)
+@router.get("/student-summary/{identifier}")
+def get_assignment_summary(identifier: str, db: Session = Depends(get_db)):
+    # Lookup student by Student_ID or ASUrite
+    if identifier.isdigit():
+        student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(identifier)).first()
+    else:
+        student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(identifier)).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Get all assignments for this student
+    assignments = db.query(StudentClassAssignment).filter(
+        StudentClassAssignment.Student_ID == student.Student_ID
+    ).all()
+
+    # Tally hours by session
+    session_hours = {"A": 0, "B": 0, "C": 0}
+    assignment_list = []
+    for a in assignments:
+        session = (a.ClassSession or "").strip().upper()
+        if session in session_hours:
+            session_hours[session] += a.WeeklyHours
+        assignment_list.append({
+            "Position": a.Position,
+            "WeeklyHours": a.WeeklyHours,
+            "ClassSession": a.ClassSession,
+            "Subject": a.Subject,
+            "CatalogNum": a.CatalogNum,
+            "ClassNum": a.ClassNum,
+            "InstructorName": f"{a.InstructorFirstName} {a.InstructorLastName}"
+        })
+
+    # Compose response
+    return {
+        "StudentName": f"{student.First_Name or ''} {student.Last_Name or ''}".strip(),
+        "ASUrite": student.ASUrite,
+        "Student_ID": student.Student_ID,
+        "Position": assignments[0].Position if assignments else None,
+        "FultonFellow": assignments[0].FultonFellow if assignments else None,
+        "EducationLevel": assignments[0].EducationLevel if assignments else None,
+        "sessionA": session_hours["A"],
+        "sessionB": session_hours["B"],
+        "sessionC": session_hours["C"],
+        "assignments": assignment_list
+    }
