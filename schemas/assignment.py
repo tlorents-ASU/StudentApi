@@ -26,11 +26,11 @@ class StudentClassAssignmentRead(BaseModel):
     AcadCareer: str
     CostCenterKey: str
     CreatedAt: Optional[datetime] = None
+    Instructor_Edit: Optional[str] = None
 
     First_Name: Optional[str] = None
     Last_Name: Optional[str] = None
     Position_Number: Optional[str] = None
-    # I9_Sent: Optional[bool] = None
     SSN_Sent: Optional[bool] = None
     Offer_Sent: Optional[bool] = None
     Offer_Signed: Optional[bool] = None

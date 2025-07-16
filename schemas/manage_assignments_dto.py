@@ -11,4 +11,5 @@ class ManageAssignmentUpdateDTO(BaseModel):
     CatalogNum: Optional[int] = None
     ClassSession: Optional[str] = None
     ClassNum: Optional[str] = None
+    AcadCareer: Optional[str] = None
     # Add more fields as needed, e.g. Compensation, Position, etc.

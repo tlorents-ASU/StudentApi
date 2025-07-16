@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/StudentClassAssignment", tags=["StudentClassAssi
 # GET all
 @router.get("/", response_model=List[StudentClassAssignmentRead])
 def get_assignments(db: Session = Depends(get_db)):
-    return db.query(StudentClassAssignment).all()
+    return db.query(StudentClassAssignment).filter(StudentClassAssignment.Instructor_Edit.is_(None)).all()
 
 
 @router.get("/template")
@@ -174,7 +174,8 @@ def get_assignment_summary(identifier: str, db: Session = Depends(get_db)):
 
     # Get all assignments for this student
     assignments = db.query(StudentClassAssignment).filter(
-        StudentClassAssignment.Student_ID == student.Student_ID
+        StudentClassAssignment.Student_ID == student.Student_ID,
+        StudentClassAssignment.Instructor_Edit.is_(None)
     ).all()
 
     # Tally hours by session
@@ -185,13 +186,15 @@ def get_assignment_summary(identifier: str, db: Session = Depends(get_db)):
         if session in session_hours:
             session_hours[session] += a.WeeklyHours
         assignment_list.append({
+            "Id": a.Id,
             "Position": a.Position,
             "WeeklyHours": a.WeeklyHours,
             "ClassSession": a.ClassSession,
             "Subject": a.Subject,
             "CatalogNum": a.CatalogNum,
             "ClassNum": a.ClassNum,
-            "InstructorName": f"{a.InstructorFirstName} {a.InstructorLastName}"
+            "InstructorName": f"{a.InstructorFirstName} {a.InstructorLastName}",
+            "AcadCareer": a.AcadCareer,
         })
 
     # Compose response
@@ -207,3 +210,106 @@ def get_assignment_summary(identifier: str, db: Session = Depends(get_db)):
         "sessionC": session_hours["C"],
         "assignments": assignment_list
     }
+
+
+@router.post("/bulk-edit")
+def bulk_edit_assignments(
+    updates: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Request body format:
+    {
+        "updates": [{ "id": 123, "Position": ..., "WeeklyHours": ..., "ClassNum": ...}, ...],
+        "deletes": [456, 789],
+        "studentId": "ASUrite or Student_ID"
+    }
+    """
+    student_id = updates.get("studentId")
+    update_rows = updates.get("updates", [])
+    delete_ids = updates.get("deletes", [])
+
+    # Find student
+    if not student_id:
+        raise HTTPException(400, "No studentId provided")
+    if str(student_id).isdigit():
+        student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(student_id)).first()
+    else:
+        student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(student_id)).first()
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    # 1. Handle updates/edits
+    for edit in update_rows:
+        orig_id = edit["id"]
+        orig = db.query(StudentClassAssignment).filter_by(Id=orig_id).first()
+        if not orig:
+            continue
+        # Mark original as edited
+        orig.Instructor_Edit = "Y"
+        db.add(orig)
+        db.flush()
+
+        class_obj = None
+        if "ClassNum" in edit and edit["ClassNum"] != orig.ClassNum:
+            from models.class_schedule import ClassSchedule2254
+            class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=edit["ClassNum"], Term=orig.Term).first()
+            if not class_obj:
+                raise HTTPException(404, f"ClassNum {edit['ClassNum']} not found")
+
+        # Always recalculate compensation & cost center based on new info
+        comp = calculate_compensation({
+            "WeeklyHours": edit["WeeklyHours"],
+            "Position": edit["Position"],
+            "EducationLevel": orig.EducationLevel,
+            "FultonFellow": orig.FultonFellow,
+            "ClassSession": class_obj.Session if class_obj else orig.ClassSession
+        })
+        cost_center = compute_cost_center_key({
+            "Position": edit["Position"],
+            "Location": class_obj.Location if class_obj else orig.Location,
+            "Campus": class_obj.Campus if class_obj else orig.Campus,
+            "AcadCareer": class_obj.AcadCareer if class_obj else orig.AcadCareer
+        })
+
+        new_assign = StudentClassAssignment(
+            Student_ID=orig.Student_ID,
+            ASUrite=orig.ASUrite,
+            Position=edit["Position"],
+            WeeklyHours=edit["WeeklyHours"],
+            FultonFellow=orig.FultonFellow,
+            Email=orig.Email,
+            EducationLevel=orig.EducationLevel,
+            Subject=class_obj.Subject if class_obj else orig.Subject,
+            CatalogNum=class_obj.CatalogNum if class_obj else orig.CatalogNum,
+            ClassSession=class_obj.Session if class_obj else orig.ClassSession,
+            ClassNum=edit["ClassNum"] if "ClassNum" in edit else orig.ClassNum,
+            Term=orig.Term,
+            InstructorFirstName=class_obj.InstructorFirstName if class_obj else orig.InstructorFirstName,
+            InstructorLastName=class_obj.InstructorLastName if class_obj else orig.InstructorLastName,
+            InstructorID=class_obj.InstructorID if class_obj else orig.InstructorID,
+            Compensation=comp,
+            Location=class_obj.Location if class_obj else orig.Location,
+            Campus=class_obj.Campus if class_obj else orig.Campus,
+            AcadCareer=class_obj.AcadCareer if class_obj else orig.AcadCareer,
+            CostCenterKey=cost_center,
+            cur_gpa=orig.cur_gpa,
+            cum_gpa=orig.cum_gpa,
+            CreatedAt=datetime.now(timezone.utc),
+            Instructor_Edit=None,  # Not edited yet
+            First_Name=orig.First_Name,
+            Last_Name=orig.Last_Name,
+            Position_Number=orig.Position_Number,
+            SSN_Sent=orig.SSN_Sent,
+            Offer_Sent=orig.Offer_Sent,
+            Offer_Signed=orig.Offer_Signed
+        )
+        db.add(new_assign)
+    # 2. Handle deletions
+    for del_id in delete_ids:
+        orig = db.query(StudentClassAssignment).filter_by(Id=del_id).first()
+        if orig:
+            orig.Instructor_Edit = "D"
+            db.add(orig)
+    db.commit()
+    return {"status": "success"}
