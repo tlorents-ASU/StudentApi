@@ -23,10 +23,10 @@ class ClassSchedule2254(Base):
     AcadCareer = Column(String, nullable=False)
 
     # --- Newly added fields ---
-    CombineSectionID = Column(String(50), nullable=False)
-    Component = Column(String(50), nullable=False)
-    EndDate = Column(Date, nullable=True)
-    EnrollCap = Column(Integer, nullable=False)
-    EnrollTotal = Column(Integer, nullable=False)
-    InstructMode = Column(String(50), nullable=False)
+    # CombineSectionID = Column(String(50), nullable=False)
+    # Component = Column(String(50), nullable=False)
+    # EndDate = Column(Date, nullable=True)
+    # EnrollCap = Column(Integer, nullable=False)
+    # EnrollTotal = Column(Integer, nullable=False)
+    # InstructMode = Column(String(50), nullable=False)
 
