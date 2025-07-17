@@ -406,3 +406,107 @@ def bulk_edit_assignments(
             db.add(orig)
     db.commit()
     return {"status": "success"}
+
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from sqlalchemy.orm import Session
+from fastapi.responses import JSONResponse
+import csv, io
+from datetime import datetime
+
+from models.student import StudentLookup
+from models.class_schedule import ClassSchedule2254
+from database import get_db
+
+router = APIRouter(prefix="/api/StudentClassAssignment", tags=["StudentClassAssignment"])
+
+@router.post("/calibrate-preview")
+async def calibrate_preview(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Accepts a CSV with headers:
+    'Position', 'FultonFellow', 'WeeklyHours', 'Student_ID (ID number OR ASUrite accepted)', 'ClassNum'
+    Returns a preview list combining info from StudentLookup and ClassSchedule2254 for each row.
+    """
+    # Parse uploaded file
+    try:
+        content = await file.read()
+        decoded = content.decode("utf-8")
+        csv_reader = csv.DictReader(io.StringIO(decoded))
+    except Exception as e:
+        raise HTTPException(400, f"Failed to read CSV: {e}")
+
+    required_fields = ["Position", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "ClassNum"]
+    preview_data = []
+
+    for idx, row in enumerate(csv_reader, start=2):
+        # --- Validate required fields ---
+        for field in required_fields:
+            if field not in row or not str(row[field]).strip():
+                raise HTTPException(422, f"Missing field '{field}' in row {idx}")
+
+        # --- Default FultonFellow to "No" if missing/blank ---
+        fulton = str(row.get("FultonFellow", "")).strip()
+        row["FultonFellow"] = fulton if fulton else "No"
+
+        # --- Student lookup ---
+        sid = row["Student_ID (ID number OR ASUrite accepted)"].strip()
+        student = None
+        if sid.isdigit():
+            student = db.query(StudentLookup).filter_by(Student_ID=int(sid)).first()
+        else:
+            student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(sid)).first()
+        if not student:
+            raise HTTPException(422, f"Student not found for '{sid}' (row {idx})")
+
+        # --- Class lookup ---
+        classnum = row["ClassNum"].strip()
+        class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=classnum).first()
+        if not class_obj:
+            raise HTTPException(422, f"ClassNum not found: '{classnum}' (row {idx})")
+
+        # --- Compose the preview object ---
+        preview_row = {
+            # --- Uploaded Row Fields ---
+            "Position": row["Position"],
+            "FultonFellow": row["FultonFellow"],
+            "WeeklyHours": row["WeeklyHours"],
+            "Student_ID": student.Student_ID,
+            "ASUrite": student.ASUrite,
+            "ClassNum": class_obj.ClassNum,
+
+            # --- Student Info ---
+            "First_Name": student.First_Name,
+            "Last_Name": student.Last_Name,
+            "ASU_Email_Adress": student.ASU_Email_Adress,
+            "Degree": student.Degree,
+            "Cumulative_GPA": student.Cumulative_GPA,
+            "Current_GPA": student.Current_GPA,
+
+            # --- Class Info (including new columns) ---
+            "Subject": class_obj.Subject,
+            "CatalogNum": class_obj.CatalogNum,
+            "SectionNum": class_obj.SectionNum,
+            "Title": class_obj.Title,
+            "Term": class_obj.Term,
+            "Session": class_obj.Session,
+            "InstructorID": class_obj.InstructorID,
+            "InstructorFirstName": class_obj.InstructorFirstName,
+            "InstructorLastName": class_obj.InstructorLastName,
+            "InstructorEmail": class_obj.InstructorEmail,
+            "Location": class_obj.Location,
+            "Campus": class_obj.Campus,
+            "AcadCareer": class_obj.AcadCareer,
+            # --- New Class Fields ---
+            "CombineSectionID": class_obj.CombineSectionID,
+            "Component": class_obj.Component,
+            "EndDate": class_obj.EndDate.isoformat() if class_obj.EndDate else None,
+            "EnrollCap": class_obj.EnrollCap,
+            "EnrollTotal": class_obj.EnrollTotal,
+            "InstructMode": class_obj.InstructMode,
+        }
+
+        preview_data.append(preview_row)
+
+    return JSONResponse(content=preview_data)
