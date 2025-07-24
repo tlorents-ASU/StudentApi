@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, not_
 from models.assignment import StudentClassAssignment
 from database import get_db
 from schemas.manage_assignments_dto import ManageAssignmentUpdateDTO
@@ -12,10 +13,15 @@ router = APIRouter(
 
 @router.get("/by-instructor/{instructor_id}")
 def get_assignments_by_instructor(instructor_id: int, db: Session = Depends(get_db)):
+    # Only include assignments where Instructor_Edit is not 'Y' or 'D' (or is null/None)
     assignments = db.query(StudentClassAssignment).filter(
-        StudentClassAssignment.InstructorID == instructor_id
+        StudentClassAssignment.InstructorID == instructor_id,
+        or_(
+            StudentClassAssignment.Instructor_Edit == None,  # Allow None/null
+            not_(StudentClassAssignment.Instructor_Edit.in_(['Y', 'D']))  # Exclude 'Y' and 'D'
+        )
     ).all()
-    # You may want to filter out internal fields
+    # Prepare return dict as before
     return [
         {
             "Id": a.Id,
