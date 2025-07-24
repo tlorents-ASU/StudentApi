@@ -90,73 +90,6 @@ def update_assignment(assignment_id: int, update_data: StudentAssignmentUpdateDt
     return
 
 
-# POST bulk upload from CSV
-# @router.post("/upload")
-# def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_db)):
-#     if not file.filename.endswith(".csv"):
-#         raise HTTPException(status_code=400, detail="Invalid file type. CSV required.")
-#
-#     try:
-#         content = file.file.read().decode("utf-8")
-#         csv_reader = csv.DictReader(io.StringIO(content))
-#     except Exception:
-#         raise HTTPException(status_code=400, detail="Failed to read CSV file.")
-#
-#     records = []
-#     now = datetime.now(timezone.utc)
-#
-#     for row in csv_reader:
-#         input_id = (row.get("Student_ID (ID number OR ASUrite accepted)") or "").strip()
-#
-#         # Determine if input is numeric (Student_ID) or ASUrite
-#         student = None
-#         if input_id.isdigit():
-#             student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(input_id)).first()
-#         elif input_id:
-#             student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(input_id)).first()
-#
-#         if not student:
-#             raise HTTPException(status_code=422, detail=f"No student found for: {input_id}")
-#
-#         # Always set both fields explicitly, so row matches your DB model
-#         row["Student_ID"] = student.Student_ID
-#         row["ASUrite"] = student.ASUrite
-#
-#         # Rest of your field mapping/logic (keep these as you have them!)
-#         row["CreatedAt"] = now
-#         row["Term"] = "2257"
-#
-#         try:
-#             row["WeeklyHours"] = int(row.get("WeeklyHours", 0))
-#         except ValueError:
-#             raise HTTPException(status_code=422, detail=f"Invalid WeeklyHours value: {row.get('WeeklyHours')}")
-#
-#         row["AcadCareer"] = infer_acad_career(row)
-#         row["CostCenterKey"] = compute_cost_center_key(row)
-#         row["Compensation"] = calculate_compensation(row)
-#
-#         if str(row.get("FultonFellow", "")).strip().lower() == "yes":
-#             row["cur_gpa"] = student.Current_GPA
-#             row["cum_gpa"] = student.Cumulative_GPA
-#         else:
-#             row["cur_gpa"] = None
-#             row["cum_gpa"] = None
-#
-#         # Only include columns that exist in your model
-#         allowed_fields = {c.name for c in StudentClassAssignment.__table__.columns}
-#         clean_row = {k: v for k, v in row.items() if k in allowed_fields}
-#
-#         try:
-#             record = StudentClassAssignment(**clean_row)
-#             records.append(record)
-#         except TypeError as e:
-#             raise HTTPException(status_code=422, detail=f"Error creating assignment object: {e}")
-#
-#     db.bulk_save_objects(records)
-#     db.commit()
-#     return {"message": f"{len(records)} records uploaded successfully."}
-
-
 # Post Bulk Upload but with only the 5 headers and rest are autocompleted
 @router.post("/upload")
 def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -306,6 +239,13 @@ def get_assignment_summary(identifier: str, db: Session = Depends(get_db)):
 
 
 
+def get_changed_fields(new_assign, orig, editable_fields):
+    changed = []
+    for field in editable_fields:
+        # The actual attribute names must match your ORM model
+        if getattr(new_assign, field) != getattr(orig, field):
+            changed.append(field)
+    return changed
 
 @router.post("/bulk-edit")
 def bulk_edit_assignments(
@@ -318,6 +258,11 @@ def bulk_edit_assignments(
         "updates": [{ "id": 123, "Position": ..., "WeeklyHours": ..., "ClassNum": ...}, ...],
         "deletes": [456, 789],
         "studentId": "ASUrite or Student_ID"
+    }
+    Returns:
+    {
+        "updated": [{...assignment fields..., "changed_fields": [...]}, ...],
+        "deleted": [456, ...]
     }
     """
     student_id = updates.get("studentId")
@@ -334,6 +279,9 @@ def bulk_edit_assignments(
     if not student:
         raise HTTPException(404, "Student not found")
 
+    updated_response = []
+    editable_fields = ["Position", "WeeklyHours", "ClassNum"]  # List your editable fields
+
     # 1. Handle updates/edits
     for edit in update_rows:
         orig_id = edit["id"]
@@ -347,7 +295,6 @@ def bulk_edit_assignments(
 
         class_obj = None
         if "ClassNum" in edit and edit["ClassNum"] != orig.ClassNum:
-            from models.class_schedule import ClassSchedule2254
             class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=edit["ClassNum"], Term=orig.Term).first()
             if not class_obj:
                 raise HTTPException(404, f"ClassNum {edit['ClassNum']} not found")
@@ -367,6 +314,7 @@ def bulk_edit_assignments(
             "AcadCareer": class_obj.AcadCareer if class_obj else orig.AcadCareer
         })
 
+        # New assignment
         new_assign = StudentClassAssignment(
             Student_ID=orig.Student_ID,
             ASUrite=orig.ASUrite,
@@ -400,6 +348,16 @@ def bulk_edit_assignments(
             Offer_Signed=orig.Offer_Signed
         )
         db.add(new_assign)
+        db.flush()  # Get new_assign.Id if autoincrement
+
+        # Find changed fields for highlighting
+        changed_fields = get_changed_fields(new_assign, orig, editable_fields)
+
+        # Prepare row for response (add other fields if needed)
+        row_dict = {col.name: getattr(new_assign, col.name) for col in StudentClassAssignment.__table__.columns}
+        row_dict['changed_fields'] = changed_fields
+        updated_response.append(row_dict)
+
     # 2. Handle deletions
     for del_id in delete_ids:
         orig = db.query(StudentClassAssignment).filter_by(Id=del_id).first()
@@ -407,7 +365,13 @@ def bulk_edit_assignments(
             orig.Instructor_Edit = "D"
             db.add(orig)
     db.commit()
-    return {"status": "success"}
+    return {
+        "updated": updated_response,
+        "deleted": delete_ids,
+        "status": "success"
+    }
+
+
 
 # NEW Test feature to calibrate a preview of the 5 headers before saving to DB (TESTING)
 @router.post("/calibrate-preview")

@@ -20,6 +20,7 @@ def get_assignments_by_instructor(instructor_id: int, db: Session = Depends(get_
         {
             "Id": a.Id,
             "Student_ID": a.Student_ID,
+            "ASUrite": a.ASUrite,
             "First_Name": a.First_Name,
             "Last_Name": a.Last_Name,
             "Position": a.Position,
