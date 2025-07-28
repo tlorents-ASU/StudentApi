@@ -16,6 +16,7 @@ from schemas.assignment_schema import StudentClassAssignmentCreate
 from schemas.assignment import StudentClassAssignmentRead
 from models.student import StudentLookup
 from fastapi.responses import JSONResponse
+from sqlalchemy import or_
 
 
 
@@ -56,10 +57,17 @@ def get_assignment(assignment_id: int, db: Session = Depends(get_db)):
     }
 
 
-# GET total hours by student
+# --- Get total hours by student
 @router.get("/totalhours/{student_id}", response_model=int)
 def get_total_hours(student_id: int, db: Session = Depends(get_db)):
-    total = db.query(StudentClassAssignment).filter_by(Student_ID=student_id).with_entities(
+    total = db.query(StudentClassAssignment).filter(
+        StudentClassAssignment.Student_ID == student_id,
+        or_(
+            StudentClassAssignment.Instructor_Edit == None,
+            StudentClassAssignment.Instructor_Edit == '',
+            StudentClassAssignment.Instructor_Edit == 'N'  # if you use this as a default for active
+        )
+    ).with_entities(
         StudentClassAssignment.WeeklyHours
     ).all()
 
