@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
-from models.application import MastersIAGraderApplication2254
+from models.application import MasterApplication2261
 from schemas.application_summary import ApplicationSummaryDto
 
-router = APIRouter(prefix="/api/MastersIAGraderApplication", tags=["MastersIAGraderApplication"])
+router = APIRouter(prefix="/api/MastersApplication", tags=["MastersApplication"])
 
 @router.get("/", response_model=List[ApplicationSummaryDto])
 def get_application_summaries(db: Session = Depends(get_db)):
-    applications = db.query(MastersIAGraderApplication2254).all()
+    applications = db.query(MasterApplication2261).all()
 
     return [
         ApplicationSummaryDto(

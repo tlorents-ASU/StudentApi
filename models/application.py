@@ -2,8 +2,8 @@ from sqlalchemy import Column, Integer, String, DateTime
 from database import Base
 
 
-class MastersIAGraderApplication2254(Base):
-    __tablename__ = "MastersIAGraderApplication2254"
+class MasterApplication2261(Base):
+    __tablename__ = "MastersApplication2261"
     __table_args__ = {"schema": "dbo"}
 
     Id = Column(Integer, primary_key=True, index=True)
