@@ -85,27 +85,60 @@ def require_admin(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="forbidden")
     return asurite
 
+
+
 def serialize_user_access(r: UserAccess) -> dict:
-    # Only include explicit columns (avoid _sa_instance_state)
     base = {
         "asu_id": r.asu_id,
         "role": r.role,
 
-        # flags as stored in DB (booleans) — useful for your admin grid
-        "assignment_adder": r.assignment_adder,
-        "applications": r.applications,
-        "phd_applications": r.phd_applications,
-        "student_summary_page": r.student_summary_page,
-        "bulk_upload_assignments": r.bulk_upload_assignments,
-        "manage_assignments": r.manage_assignments,
-        "login": r.login,
-        "master_dashboard": r.master_dashboard,
+        # flags your admin grid expects at top-level
+        "assignment_adder": bool(r.assignment_adder),
+        "applications": bool(r.applications),
+        "phd_applications": bool(r.phd_applications),
+        "student_summary_page": bool(r.student_summary_page),
+        "bulk_upload_assignments": bool(r.bulk_upload_assignments),
+        "manage_assignments": bool(r.manage_assignments),
+        "login": bool(r.login),
+        "master_dashboard": bool(r.master_dashboard),
+        "faculty_dashboard": bool(r.faculty_dashboard),  # ← ADD THIS
     }
-    # Build perms (booleans) using role defaults + overrides
+
+    # optional profile fields (handy in the grid)
+    base["email"] = r.email
+    base["emplid"] = r.emplid
+    base["name"] = r.name
+    base["position_title"] = r.position_title
+    base["program"] = r.program
+
+    # merged perms (if other parts of the app need it)
     row_dict = base.copy()
-    perms = merged_perms(r.role, row_dict)
-    base["perms"] = perms        # ✅ canonical perms object
+    base["perms"] = merged_perms(r.role, row_dict)
+
     return base
+
+
+# def serialize_user_access(r: UserAccess) -> dict:
+#     # Only include explicit columns (avoid _sa_instance_state)
+#     base = {
+#         "asu_id": r.asu_id,
+#         "role": r.role,
+#
+#         # flags as stored in DB (booleans) — useful for your admin grid
+#         "assignment_adder": r.assignment_adder,
+#         "applications": r.applications,
+#         "phd_applications": r.phd_applications,
+#         "student_summary_page": r.student_summary_page,
+#         "bulk_upload_assignments": r.bulk_upload_assignments,
+#         "manage_assignments": r.manage_assignments,
+#         "login": r.login,
+#         "master_dashboard": r.master_dashboard,
+#     }
+#     # Build perms (booleans) using role defaults + overrides
+#     row_dict = base.copy()
+#     perms = merged_perms(r.role, row_dict)
+#     base["perms"] = perms        # ✅ canonical perms object
+#     return base
 
 @router.get("/users")
 def list_users(db: Session = Depends(get_db), me: str = Depends(require_admin)):

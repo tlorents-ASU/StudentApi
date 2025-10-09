@@ -60,13 +60,11 @@ def dev_impersonate(asurite: str, response: Response, db: Session = Depends(get_
     response.set_cookie("auth", asurite, httponly=True, samesite="lax", secure=False, path="/")
     return {"ok": True, "asurite": asurite}
 
-
-
-@router.get("/user")
-def get_user(request: Request, db: Session = Depends(get_db)):
+# ---- NEW: pure dependency you can reuse anywhere ----
+def current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     """
-    Return the logged-in user based on the 'auth' cookie (plain ASURITE in dev).
-    Shape matches what your frontend expects.
+    Resolve the current user from the 'auth' cookie (DEV),
+    and return the shape your frontend expects.
     """
     asurite = (request.cookies.get("auth") or "").lower().strip()
     if not asurite:
@@ -74,7 +72,6 @@ def get_user(request: Request, db: Session = Depends(get_db)):
 
     row = db.get(UserAccess, asurite)
     if not row:
-        # Cookie present but no access row: treat as guest (or 404/403 if you prefer)
         return {"asurite": asurite, "role": "guest", "is_admin": False, "perms": {}}
 
     flags = {
@@ -86,6 +83,7 @@ def get_user(request: Request, db: Session = Depends(get_db)):
         "manage_assignments": bool(row.manage_assignments),
         "login": bool(row.login),
         "master_dashboard": bool(row.master_dashboard),
+        "faculty_dashboard": bool(row.faculty_dashboard),
     }
     perms = merged_perms(row.role, flags)
     return {
@@ -94,6 +92,45 @@ def get_user(request: Request, db: Session = Depends(get_db)):
         "is_admin": row.role == "admin",
         "perms": perms,
     }
+
+# Reuse the dependency for the public route
+@router.get("/user")
+def get_user(user: dict = Depends(current_user)):
+    return user
+
+
+# @router.get("/user")
+# def get_user(request: Request, db: Session = Depends(get_db)):
+#     """
+#     Return the logged-in user based on the 'auth' cookie (plain ASURITE in dev).
+#     Shape matches what your frontend expects.
+#     """
+#     asurite = (request.cookies.get("auth") or "").lower().strip()
+#     if not asurite:
+#         return {"asurite": None, "role": "guest", "is_admin": False, "perms": {}}
+#
+#     row = db.get(UserAccess, asurite)
+#     if not row:
+#         # Cookie present but no access row: treat as guest (or 404/403 if you prefer)
+#         return {"asurite": asurite, "role": "guest", "is_admin": False, "perms": {}}
+#
+#     flags = {
+#         "assignment_adder": bool(row.assignment_adder),
+#         "applications": bool(row.applications),
+#         "phd_applications": bool(row.phd_applications),
+#         "student_summary_page": bool(row.student_summary_page),
+#         "bulk_upload_assignments": bool(row.bulk_upload_assignments),
+#         "manage_assignments": bool(row.manage_assignments),
+#         "login": bool(row.login),
+#         "master_dashboard": bool(row.master_dashboard),
+#     }
+#     perms = merged_perms(row.role, flags)
+#     return {
+#         "asurite": row.asu_id,
+#         "role": row.role,
+#         "is_admin": row.role == "admin",
+#         "perms": perms,
+#     }
 
 
 @router.get("/dev-logout")

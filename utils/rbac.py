@@ -35,6 +35,7 @@ ROLE_DEFAULTS = {
         "manage_assignments": True,
         "login": True,
         "master_dashboard": True,
+        "faculty_dashboard":True,
     },
     "level1": {
         "assignment_adder": False,
@@ -45,6 +46,7 @@ ROLE_DEFAULTS = {
         "manage_assignments": True,
         "login": False,
         "master_dashboard": False,
+        "faculty_dashboard": True,
     },
     "level2": {
         "assignment_adder": True,
@@ -55,6 +57,18 @@ ROLE_DEFAULTS = {
         "manage_assignments": False,
         "login": False,
         "master_dashboard": False,
+        "faculty_dashboard": True,
+    },
+    "default": {
+        "assignment_adder": False,
+        "applications": False,
+        "phd_applications": False,
+        "student_summary_page": False,
+        "bulk_upload_assignments": False,
+        "manage_assignments": False,
+        "login": True,
+        "master_dashboard": False,
+        "faculty_dashboard": True,
     },
 }
 

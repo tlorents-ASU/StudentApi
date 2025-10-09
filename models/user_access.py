@@ -14,6 +14,7 @@ class UserAccess(Base):
     position_title = Column(String(100), nullable=True)
     program = Column(String(50), nullable=True)
 
+    faculty_dashboard = Column(Boolean, default=False, nullable=False)
     assignment_adder = Column(Boolean, default=False, nullable=False)
     applications = Column(Boolean, default=False, nullable=False)
     phd_applications = Column(Boolean, default=False, nullable=False)

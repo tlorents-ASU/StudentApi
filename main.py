@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from database import engine, Base
-from routes import student, assignment, class_schedule, application, manage_assignments, phd_application
+from routes import student, assignment, class_schedule, application, manage_assignments, phd_application, faculty
 from routes import admin_users, auth
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -31,6 +31,7 @@ app.include_router(class_schedule.router)
 app.include_router(application.router)
 app.include_router(manage_assignments.router)
 app.include_router(phd_application.router)
+app.include_router(faculty.router)
 
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(admin_users.router)
