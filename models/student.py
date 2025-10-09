@@ -5,7 +5,7 @@ Base = declarative_base()
 
 
 class StudentLookup(Base):
-    __tablename__ = "StudentData"
+    __tablename__ = "StudentsData"
     __table_args__ = {'schema': 'dbo'}
 
     Student_ID = Column(Integer, primary_key=True, index=True)
@@ -19,7 +19,7 @@ class StudentLookup(Base):
     ASUrite = Column(String(50), nullable=False)
     First_Name = Column(String(75), nullable=False)
     Last_Name = Column(String(100), nullable=False)
-    Middle_Name = Column(String(75), nullable=True)
+    # Middle_Name = Column(String(75), nullable=True)
     Preferred_Primary_First_Name = Column(String(75), nullable=True)
 
     ASU_Email_Adress = Column(String(150), nullable=False)
@@ -40,4 +40,4 @@ class StudentLookup(Base):
 
     Expected_Graduation_Term = Column(String(50), nullable=True)
     Campus = Column(String(50), nullable=False)
-    Deans_List = Column(String(50), nullable=False)
+    # Deans_List = Column(String(50), nullable=False)
