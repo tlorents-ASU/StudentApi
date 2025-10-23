@@ -91,7 +91,6 @@ def serialize_user_access(r: UserAccess) -> dict:
     base = {
         "asu_id": r.asu_id,
         "role": r.role,
-
         # flags your admin grid expects at top-level
         "assignment_adder": bool(r.assignment_adder),
         "applications": bool(r.applications),

@@ -2,9 +2,8 @@ from sqlalchemy import Column, String, Integer, Date
 from database import Base
 
 
-
-class ClassSchedule2254(Base):
-    __tablename__ = "ClassSchedule2254"
+class ClassSchedule2261(Base):
+    __tablename__ = "ClassSchedule2261"
     __table_args__ = {"schema": "dbo"}
 
     ClassNum = Column(String, primary_key=True, index=True)
@@ -23,10 +22,9 @@ class ClassSchedule2254(Base):
     AcadCareer = Column(String, nullable=False)
 
     # --- Newly added fields ---
-    CombineSectionID = Column(String(50), nullable=False)
+    # CombineSectionID = Column(String(50), nullable=False)
     Component = Column(String(50), nullable=False)
     EndDate = Column(Date, nullable=True)
     EnrollCap = Column(Integer, nullable=False)
     EnrollTotal = Column(Integer, nullable=False)
     InstructMode = Column(String(50), nullable=False)
-

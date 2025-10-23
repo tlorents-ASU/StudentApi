@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 
 from models.assignment import StudentClassAssignment
-from models.class_schedule import ClassSchedule2254
+from models.class_schedule import ClassSchedule2261
 from schemas.assignment_dto import StudentAssignmentUpdateDto
 from database import get_db
 from utils.assignment_utils import calculate_compensation, compute_cost_center_key, infer_acad_career
@@ -136,7 +136,7 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
 
         # --- Class Lookup ---
         class_num = row["ClassNum"].strip()
-        class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=class_num).first()
+        class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=class_num).first()
         if not class_obj:
             raise HTTPException(422, f"ClassNum '{class_num}' not found (row {idx})")
 
@@ -303,7 +303,7 @@ def bulk_edit_assignments(
 
         class_obj = None
         if "ClassNum" in edit and edit["ClassNum"] != orig.ClassNum:
-            class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=edit["ClassNum"], Term=orig.Term).first()
+            class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=edit["ClassNum"], Term=orig.Term).first()
             if not class_obj:
                 raise HTTPException(404, f"ClassNum {edit['ClassNum']} not found")
 
@@ -390,7 +390,7 @@ async def calibrate_preview(
     """
     Accepts a CSV with headers:
     'Position', 'FultonFellow', 'WeeklyHours', 'Student_ID (ID number OR ASUrite accepted)', 'ClassNum'
-    Returns a preview list combining info from StudentLookup and ClassSchedule2254 for each row.
+    Returns a preview list combining info from StudentLookup and ClassSchedule2261 for each row.
     """
     # Parse uploaded file
     try:
@@ -425,7 +425,7 @@ async def calibrate_preview(
 
         # --- Class lookup ---
         classnum = row["ClassNum"].strip()
-        class_obj = db.query(ClassSchedule2254).filter_by(ClassNum=classnum).first()
+        class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=classnum).first()
         if not class_obj:
             raise HTTPException(422, f"ClassNum not found: '{classnum}' (row {idx})")
 
@@ -462,7 +462,7 @@ async def calibrate_preview(
             "Campus": class_obj.Campus,
             "AcadCareer": class_obj.AcadCareer,
             # --- New Class Fields ---
-            "CombineSectionID": class_obj.CombineSectionID,
+            # "CombineSectionID": class_obj.CombineSectionID,
             "Component": class_obj.Component,
             "EndDate": class_obj.EndDate.isoformat() if class_obj.EndDate else None,
             "EnrollCap": class_obj.EnrollCap,
