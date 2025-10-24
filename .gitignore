@@ -7,3 +7,4 @@ __pycache__/
 # VSCode or PyCharm IDE files (optional)
 .vscode/
 .idea/
+.idea/*
