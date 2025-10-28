@@ -31,6 +31,7 @@ def get_assignments(db: Session = Depends(get_db)):
 
 @router.get("/template")
 def download_template():
+    """Download the new simplified 5-header template"""
     headers = [
         "Position", "FultonFellow", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "ClassNum"
     ]
@@ -39,6 +40,22 @@ def download_template():
         iter([csv_content]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=BulkUploadTemplate.csv"}
+    )
+
+
+@router.get("/template-legacy")
+def download_legacy_template():
+    """Download the legacy 12-header template for faculty who prefer the old format"""
+    headers = [
+        "Position", "FultonFellow", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "First_Name",
+        "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum",
+        "ClassSession", "ClassNum"
+    ]
+    csv_content = ",".join(headers) + "\n"
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=BulkUploadTemplate_Legacy.csv"}
     )
 
 
@@ -98,7 +115,7 @@ def update_assignment(assignment_id: int, update_data: StudentAssignmentUpdateDt
     return
 
 
-# Post Bulk Upload but with only the 5 headers and rest are autocompleted
+# Post Bulk Upload - Supports both 5-header and 17-header templates
 @router.post("/upload")
 def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.endswith((".csv", ".xlsx")):
@@ -107,92 +124,184 @@ def upload_assignments(file: UploadFile = File(...), db: Session = Depends(get_d
         # Read CSV (Excel not handled in this backend example, but could be added)
         content = file.file.read().decode("utf-8-sig")
         csv_reader = csv.DictReader(io.StringIO(content))
+
+        # Detect which template format is being used by checking headers
+        fieldnames = csv_reader.fieldnames or []
+        is_legacy_format = "First_Name" in fieldnames and "Last_Name" in fieldnames and "Email" in fieldnames
+
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not read CSV: " + str(e))
 
     records = []
     now = datetime.now(timezone.utc)
-    required_fields = ["Position", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "ClassNum"]
 
-    for idx, row in enumerate(csv_reader, start=2):
-        # --- Validate required fields (except FultonFellow, which is optional) ---
-        for field in required_fields:
-            if field not in row or not str(row[field]).strip():
-                raise HTTPException(422, f"Missing field '{field}' in row {idx}")
+    if is_legacy_format:
+        # --- LEGACY 12-HEADER FORMAT ---
+        required_fields = [
+            "Position", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "ClassNum",
+            "First_Name", "Last_Name", "Email", "EducationLevel", "Subject", "CatalogNum", "ClassSession"
+        ]
 
-        # --- Set FultonFellow to 'No' if it's blank or empty or missing ---
-        fulton = str(row.get("FultonFellow", "")).strip()
-        row["FultonFellow"] = fulton if fulton else "No"
+        for idx, row in enumerate(csv_reader, start=2):
+            # Validate required fields
+            for field in required_fields:
+                if field not in row or not str(row[field]).strip():
+                    raise HTTPException(422, f"Missing field '{field}' in row {idx} (Legacy format)")
 
-        # --- Student Lookup ---
-        student_id_or_asurite = row["Student_ID (ID number OR ASUrite accepted)"].strip()
-        student = None
-        if student_id_or_asurite.isdigit():
-            student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(student_id_or_asurite)).first()
-        else:
-            student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(student_id_or_asurite)).first()
-        if not student:
-            raise HTTPException(422, f"Student '{student_id_or_asurite}' not found (row {idx})")
+            # Set FultonFellow to 'No' if blank
+            fulton = str(row.get("FultonFellow", "")).strip()
+            fulton_fellow = fulton if fulton else "No"
 
-        # --- Class Lookup ---
-        class_num = row["ClassNum"].strip()
-        class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=class_num).first()
-        if not class_obj:
-            raise HTTPException(422, f"ClassNum '{class_num}' not found (row {idx})")
+            # Student lookup (for validation and to get GPA data)
+            student_id_or_asurite = row["Student_ID (ID number OR ASUrite accepted)"].strip()
+            student = None
+            if student_id_or_asurite.isdigit():
+                student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(student_id_or_asurite)).first()
+            else:
+                student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(student_id_or_asurite)).first()
+            if not student:
+                raise HTTPException(422, f"Student '{student_id_or_asurite}' not found (row {idx})")
 
-        # --- Compose calculated fields ---
-        weekly_hours = int(row["WeeklyHours"])
-        position = row["Position"]
-        fulton_fellow = row["FultonFellow"]
-        session = class_obj.Session
+            # Class lookup (for validation and to get Term/AcadCareer/Instructor/Location/Campus from DB)
+            class_num = row["ClassNum"].strip()
+            class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=class_num).first()
+            if not class_obj:
+                raise HTTPException(422, f"ClassNum '{class_num}' not found (row {idx})")
 
-        compensation = calculate_compensation({
-            "WeeklyHours": weekly_hours,
-            "Position": position,
-            "EducationLevel": student.Degree,
-            "FultonFellow": fulton_fellow,
-            "ClassSession": session
-        })
-        cost_center = compute_cost_center_key({
-            "Position": position,
-            "Location": class_obj.Location,
-            "Campus": class_obj.Campus,
-            "AcadCareer": class_obj.AcadCareer
-        })
+            # Calculate compensation and cost center using PROVIDED values from CSV + DB lookups
+            weekly_hours = int(row["WeeklyHours"])
+            position = row["Position"]
+            education_level = row["EducationLevel"].strip()
+            session = row["ClassSession"].strip()
 
-        # --- Compose assignment object ---
-        assignment = StudentClassAssignment(
-            Student_ID=student.Student_ID,
-            ASUrite=student.ASUrite,
-            Position=position,
-            FultonFellow=fulton_fellow,
-            WeeklyHours=weekly_hours,
-            Email=student.ASU_Email_Adress,
-            First_Name=student.First_Name,
-            Last_Name=student.Last_Name,
-            EducationLevel=student.Degree,
-            Subject=class_obj.Subject,
-            CatalogNum=class_obj.CatalogNum,
-            ClassSession=class_obj.Session,
-            ClassNum=class_num,
-            Term=class_obj.Term,
-            InstructorFirstName=class_obj.InstructorFirstName,
-            InstructorLastName=class_obj.InstructorLastName,
-            InstructorID=class_obj.InstructorID,
-            Location=class_obj.Location,
-            Campus=class_obj.Campus,
-            AcadCareer=class_obj.AcadCareer,
-            CostCenterKey=cost_center,
-            Compensation=compensation,
-            CreatedAt=now,
-            cum_gpa=float(student.Cumulative_GPA or 0),
-            cur_gpa=float(student.Current_GPA or 0),
-        )
-        records.append(assignment)
+            compensation = calculate_compensation({
+                "WeeklyHours": weekly_hours,
+                "Position": position,
+                "EducationLevel": education_level,
+                "FultonFellow": fulton_fellow,
+                "ClassSession": session
+            })
+            cost_center = compute_cost_center_key({
+                "Position": position,
+                "Location": class_obj.Location,  # From DB
+                "Campus": class_obj.Campus,  # From DB
+                "AcadCareer": class_obj.AcadCareer  # From DB
+            })
+
+            # Create assignment using PROVIDED values from CSV + DB lookups
+            assignment = StudentClassAssignment(
+                Student_ID=student.Student_ID,
+                ASUrite=student.ASUrite,
+                Position=position,
+                FultonFellow=fulton_fellow,
+                WeeklyHours=weekly_hours,
+                Email=row["Email"].strip(),
+                First_Name=row["First_Name"].strip(),
+                Last_Name=row["Last_Name"].strip(),
+                EducationLevel=education_level,
+                Subject=row["Subject"].strip(),
+                CatalogNum=row["CatalogNum"].strip(),
+                ClassSession=session,
+                ClassNum=class_num,
+                Term=class_obj.Term,  # From DB
+                InstructorFirstName=class_obj.InstructorFirstName,  # From DB
+                InstructorLastName=class_obj.InstructorLastName,  # From DB
+                InstructorID=class_obj.InstructorID,  # From DB
+                Location=class_obj.Location,  # From DB
+                Campus=class_obj.Campus,  # From DB
+                AcadCareer=class_obj.AcadCareer,  # From DB
+                CostCenterKey=cost_center,
+                Compensation=compensation,
+                CreatedAt=now,
+                cum_gpa=float(student.Cumulative_GPA or 0),
+                cur_gpa=float(student.Current_GPA or 0),
+            )
+            records.append(assignment)
+    else:
+        # --- NEW 5-HEADER FORMAT (AUTO-COMPLETE) ---
+        required_fields = ["Position", "WeeklyHours", "Student_ID (ID number OR ASUrite accepted)", "ClassNum"]
+
+        for idx, row in enumerate(csv_reader, start=2):
+            # --- Validate required fields (except FultonFellow, which is optional) ---
+            for field in required_fields:
+                if field not in row or not str(row[field]).strip():
+                    raise HTTPException(422, f"Missing field '{field}' in row {idx}")
+
+            # --- Set FultonFellow to 'No' if it's blank or empty or missing ---
+            fulton = str(row.get("FultonFellow", "")).strip()
+            row["FultonFellow"] = fulton if fulton else "No"
+
+            # --- Student Lookup ---
+            student_id_or_asurite = row["Student_ID (ID number OR ASUrite accepted)"].strip()
+            student = None
+            if student_id_or_asurite.isdigit():
+                student = db.query(StudentLookup).filter(StudentLookup.Student_ID == int(student_id_or_asurite)).first()
+            else:
+                student = db.query(StudentLookup).filter(StudentLookup.ASUrite.ilike(student_id_or_asurite)).first()
+            if not student:
+                raise HTTPException(422, f"Student '{student_id_or_asurite}' not found (row {idx})")
+
+            # --- Class Lookup ---
+            class_num = row["ClassNum"].strip()
+            class_obj = db.query(ClassSchedule2261).filter_by(ClassNum=class_num).first()
+            if not class_obj:
+                raise HTTPException(422, f"ClassNum '{class_num}' not found (row {idx})")
+
+            # --- Compose calculated fields ---
+            weekly_hours = int(row["WeeklyHours"])
+            position = row["Position"]
+            fulton_fellow = row["FultonFellow"]
+            session = class_obj.Session
+
+            compensation = calculate_compensation({
+                "WeeklyHours": weekly_hours,
+                "Position": position,
+                "EducationLevel": student.Degree,
+                "FultonFellow": fulton_fellow,
+                "ClassSession": session
+            })
+            cost_center = compute_cost_center_key({
+                "Position": position,
+                "Location": class_obj.Location,
+                "Campus": class_obj.Campus,
+                "AcadCareer": class_obj.AcadCareer
+            })
+
+            # --- Compose assignment object ---
+            assignment = StudentClassAssignment(
+                Student_ID=student.Student_ID,
+                ASUrite=student.ASUrite,
+                Position=position,
+                FultonFellow=fulton_fellow,
+                WeeklyHours=weekly_hours,
+                Email=student.ASU_Email_Adress,
+                First_Name=student.First_Name,
+                Last_Name=student.Last_Name,
+                EducationLevel=student.Degree,
+                Subject=class_obj.Subject,
+                CatalogNum=class_obj.CatalogNum,
+                ClassSession=class_obj.Session,
+                ClassNum=class_num,
+                Term=class_obj.Term,
+                InstructorFirstName=class_obj.InstructorFirstName,
+                InstructorLastName=class_obj.InstructorLastName,
+                InstructorID=class_obj.InstructorID,
+                Location=class_obj.Location,
+                Campus=class_obj.Campus,
+                AcadCareer=class_obj.AcadCareer,
+                CostCenterKey=cost_center,
+                Compensation=compensation,
+                CreatedAt=now,
+                cum_gpa=float(student.Cumulative_GPA or 0),
+                cur_gpa=float(student.Current_GPA or 0),
+            )
+            records.append(assignment)
 
     db.bulk_save_objects(records)
     db.commit()
-    return {"message": f"{len(records)} assignments uploaded successfully."}
+
+    format_type = "legacy 12-header" if is_legacy_format else "new 5-header"
+    return {"message": f"{len(records)} assignments uploaded successfully using {format_type} format."}
 
 
 # NEW: Get assignment summary for a student (by Student_ID or ASUrite)
