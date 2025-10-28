@@ -145,7 +145,7 @@ def get_faculty_assignments(
     # Gate access
     require_perm(user, "faculty_dashboard")
 
-    rows = db.query(StudentClassAssignment).all()
+    rows = db.query(StudentClassAssignment).filter(StudentClassAssignment.Instructor_Edit.is_(None)).all()
 
     safe = []
     for r in rows:
