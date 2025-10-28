@@ -1,9 +1,25 @@
-.env
-
-# Ignore Python bytecode
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.pdb
 
-# VSCode or PyCharm IDE files (optional)
-.vscode/
+# Virtual environment
+venv/
+.env
+.venv/
+
+# IDEs
 .idea/
+.vscode/
+.idea/*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
